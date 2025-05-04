@@ -3,6 +3,9 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/contexts/auth-context"
+import ErrorDebugger from "@/components/error-debugger"
+import ErrorTracker from "@/components/error-tracker"
+import SuccessPropertyFixer from "@/components/success-property-fixer"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -12,14 +15,13 @@ export const metadata: Metadata = {
     generator: 'v0.dev'
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.className}>
+        <ErrorTracker />
+        <ErrorDebugger />
+        <SuccessPropertyFixer />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
+import { getSupabaseUrl, getSupabaseAnonKey, getSupabaseServiceKey, isSupabaseConfigured } from "./env"
 
 // Create a mock Supabase client that doesn't throw errors
 const createMockClient = () => {
@@ -39,15 +40,12 @@ const createMockClient = () => {
 // Create a client-side Supabase client
 export const createClientClient = () => {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!isSupabaseConfigured()) {
       console.warn("Missing Supabase environment variables, using mock client")
       return createMockClient() as any
     }
 
-    return createClient<Database>(supabaseUrl, supabaseAnonKey)
+    return createClient<Database>(getSupabaseUrl(), getSupabaseAnonKey())
   } catch (error) {
     console.error("Error creating Supabase client:", error)
     return createMockClient() as any
@@ -57,15 +55,12 @@ export const createClientClient = () => {
 // Server-side Supabase client (with admin permissions)
 export const createServerClient = () => {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!isSupabaseConfigured() || !getSupabaseServiceKey()) {
       console.warn("Missing Supabase environment variables for server client, using mock client")
       return createMockClient() as any
     }
 
-    return createClient<Database>(supabaseUrl, supabaseServiceKey)
+    return createClient<Database>(getSupabaseUrl(), getSupabaseServiceKey())
   } catch (error) {
     console.error("Error creating Supabase server client:", error)
     return createMockClient() as any

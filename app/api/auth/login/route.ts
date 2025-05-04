@@ -3,7 +3,6 @@ import { cookies } from "next/headers"
 import { getUserByEmail, createSession } from "@/lib/redis"
 
 // Safely import Supabase client
-const supabaseClient: any = null
 const getSupabaseClient = async () => {
   if (typeof window === "undefined") {
     try {
@@ -19,10 +18,18 @@ const getSupabaseClient = async () => {
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json()
+    let requestBody
+    try {
+      requestBody = await request.json()
+    } catch (error) {
+      console.error("Error parsing JSON:", error)
+      return NextResponse.json({ error: "Invalid JSON request body", success: false }, { status: 400 })
+    }
+
+    const { email, password } = requestBody || {}
 
     if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+      return NextResponse.json({ error: "Email and password are required", success: false }, { status: 400 })
     }
 
     // Try Supabase authentication first if available
@@ -30,12 +37,16 @@ export async function POST(request: Request) {
       const supabase = await getSupabaseClient()
 
       if (supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const authResponse = await supabase.auth.signInWithPassword({
           email,
           password,
         })
 
-        if (!error && data.user) {
+        // Safely access properties with optional chaining
+        const data = authResponse?.data
+        const error = authResponse?.error
+
+        if (!error && data?.user) {
           // Set session cookie
           cookies().set({
             name: "session_id",
@@ -47,13 +58,12 @@ export async function POST(request: Request) {
           })
 
           // Get user profile from database
-          const { data: userData, error: userError } = await supabase
-            .from("users")
-            .select("*")
-            .eq("auth_id", data.user.id)
-            .single()
+          const userResponse = await supabase.from("users").select("*").eq("auth_id", data.user.id).single()
 
-          if (!userError) {
+          const userData = userResponse?.data
+          const userError = userResponse?.error
+
+          if (!userError && userData) {
             // Return user data
             return NextResponse.json({
               id: data.user.id,
@@ -61,6 +71,7 @@ export async function POST(request: Request) {
               email: data.user.email,
               balance: userData?.balance || 0,
               createdAt: userData?.created_at || data.user.created_at,
+              success: true,
             })
           }
         }
@@ -76,13 +87,13 @@ export async function POST(request: Request) {
       const user = await getUserByEmail(email)
 
       if (!user) {
-        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+        return NextResponse.json({ error: "Invalid credentials", success: false }, { status: 401 })
       }
 
       // In a real app, you would hash and compare passwords
       // For demo purposes, we'll just check if the password matches
       if (user.password !== password) {
-        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+        return NextResponse.json({ error: "Invalid credentials", success: false }, { status: 401 })
       }
 
       // Create session
@@ -101,13 +112,13 @@ export async function POST(request: Request) {
       // Return user without password
       const { password: _, ...userWithoutPassword } = user
 
-      return NextResponse.json(userWithoutPassword)
+      return NextResponse.json({ ...userWithoutPassword, success: true })
     } catch (redisError) {
       console.error("Redis error:", redisError)
-      return NextResponse.json({ error: "Authentication service unavailable" }, { status: 503 })
+      return NextResponse.json({ error: "Authentication service unavailable", success: false }, { status: 503 })
     }
   } catch (error) {
     console.error("Error logging in:", error)
-    return NextResponse.json({ error: "Failed to log in" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to log in", success: false }, { status: 500 })
   }
 }

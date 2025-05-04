@@ -3,7 +3,6 @@ import { cookies } from "next/headers"
 import { getUserByEmail, createUser, createSession } from "@/lib/redis"
 
 // Safely import Supabase client
-const supabaseClient: any = null
 const getSupabaseClient = async () => {
   if (typeof window === "undefined") {
     try {
@@ -19,17 +18,25 @@ const getSupabaseClient = async () => {
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password } = await request.json()
+    let requestBody
+    try {
+      requestBody = await request.json()
+    } catch (error) {
+      console.error("Error parsing JSON:", error)
+      return NextResponse.json({ error: "Invalid JSON request body", success: false }, { status: 400 })
+    }
+
+    const { name, email, password } = requestBody || {}
 
     if (!name || !email || !password) {
-      return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 })
+      return NextResponse.json({ error: "Name, email, and password are required", success: false }, { status: 400 })
     }
 
     // Check if user already exists in Redis
     try {
       const existingUser = await getUserByEmail(email)
       if (existingUser) {
-        return NextResponse.json({ error: "Email already in use" }, { status: 409 })
+        return NextResponse.json({ error: "Email already in use", success: false }, { status: 409 })
       }
     } catch (redisError) {
       console.error("Redis error checking existing user:", redisError)
@@ -41,7 +48,7 @@ export async function POST(request: Request) {
       const supabase = await getSupabaseClient()
 
       if (supabase) {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const authResponse = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -49,14 +56,20 @@ export async function POST(request: Request) {
           },
         })
 
-        if (!authError && authData.user) {
+        // Safely access properties with optional chaining
+        const authData = authResponse?.data
+        const authError = authResponse?.error
+
+        if (!authError && authData?.user) {
           // Create user profile in Supabase database
-          const { error: profileError } = await supabase.from("users").insert({
+          const profileResponse = await supabase.from("users").insert({
             auth_id: authData.user.id,
             name,
             email,
             balance: 10.0, // Starting balance
           })
+
+          const profileError = profileResponse?.error
 
           if (!profileError) {
             // Set session cookie
@@ -76,6 +89,7 @@ export async function POST(request: Request) {
               email,
               balance: 10.0,
               createdAt: new Date().toISOString(),
+              success: true,
             })
           }
         }
@@ -112,13 +126,13 @@ export async function POST(request: Request) {
       // Return user without password
       const { password: _, ...userWithoutPassword } = user
 
-      return NextResponse.json(userWithoutPassword)
+      return NextResponse.json({ ...userWithoutPassword, success: true })
     } catch (redisError) {
       console.error("Redis error creating user:", redisError)
-      return NextResponse.json({ error: "User registration service unavailable" }, { status: 503 })
+      return NextResponse.json({ error: "User registration service unavailable", success: false }, { status: 503 })
     }
   } catch (error) {
     console.error("Error signing up:", error)
-    return NextResponse.json({ error: "Failed to sign up" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to sign up", success: false }, { status: 500 })
   }
 }

@@ -1,18 +1,52 @@
 // This file contains API-related functions and mock data for the SMS reseller platform.
 
 import type { Country, Service } from "./types"
+import { getSmsApiKey, isDemoMode } from "./env"
+import { cacheApiResponse, getCachedApiResponse } from "./redis"
+import { defaultCountries } from "./default-data"
 
-// Determine if the application is in demo mode based on the API key.
-export function isInDemoMode(): boolean {
-  return !process.env.SMS_MAN_API_KEY
+// Base URL for SMS-man API
+const API_BASE_URL = "https://api.sms-man.com/control"
+
+// Check if we're in demo mode (no API key)
+export function isInDemoMode() {
+  return isDemoMode() || !getSmsApiKey() || getSmsApiKey() === "demo_key"
 }
 
-// Fetch countries from the SMS-man API
-export async function fetchCountriesFromApi(): Promise<Country[]> {
-  // In a real application, this would fetch from the SMS-man API
-  // and transform the data into the Country type.
-  // For demo purposes, we'll just return mock data.
-  return mockCountries
+// Fetch countries from API or return mock data
+export async function fetchCountries() {
+  // Check cache first
+  const cachedData = await getCachedApiResponse("countries")
+  if (cachedData) {
+    return cachedData
+  }
+
+  // If in demo mode, return mock data
+  if (isInDemoMode()) {
+    // Cache the mock data
+    await cacheApiResponse("countries", defaultCountries)
+    return defaultCountries
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/countries?token=${getSmsApiKey()}`)
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    // Cache the response
+    await cacheApiResponse("countries", data)
+
+    return data
+  } catch (error) {
+    console.error("Error fetching countries:", error)
+
+    // Return mock data on error
+    return defaultCountries
+  }
 }
 
 // Fetch services from the SMS-man API

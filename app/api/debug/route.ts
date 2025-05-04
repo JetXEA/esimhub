@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
-import { isInDemoMode } from "@/lib/api-server"
 import redis from "@/lib/redis"
+import { isDemoMode, isRedisConfigured, isSupabaseConfigured, getRedisUrl, getSmsApiKey } from "@/lib/env"
 
 export async function GET() {
   try {
-    // Check if the API key is set
-    const apiKey = process.env.SMS_MAN_API_KEY
-    const demoMode = isInDemoMode()
+    // Check environment variables
+    const apiKey = getSmsApiKey()
+    const demoMode = isDemoMode()
+    const redisConfigured = isRedisConfigured()
+    const supabaseConfigured = isSupabaseConfigured()
 
     // Check Redis connection
     let redisStatus = "Unknown"
@@ -30,11 +32,12 @@ export async function GET() {
     }
 
     // Don't expose the full API key in the response
-    const keyStatus = apiKey ? "Set" : "Not set"
-    const keyPreview = apiKey ? `${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}` : "N/A"
+    const keyStatus = apiKey && apiKey !== "demo_key" ? "Set" : "Not set"
+    const keyPreview =
+      apiKey && apiKey !== "demo_key" ? `${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}` : "N/A"
 
     // Check Upstash Redis REST URL
-    const upstashUrl = process.env.UPSTASH_REDIS_REST_URL
+    const upstashUrl = getRedisUrl()
     const upstashUrlStatus = upstashUrl ? (upstashUrl.startsWith("https://") ? "Valid" : "Invalid format") : "Not set"
 
     return NextResponse.json({
@@ -47,11 +50,15 @@ export async function GET() {
         status: redisStatus,
         message: redisMessage,
         upstashUrl: upstashUrlStatus,
+        configured: redisConfigured,
+      },
+      supabase: {
+        configured: supabaseConfigured,
       },
       connectivity: demoMode ? "Using Mock Data" : "Connected",
       demoMode: demoMode,
       message: demoMode
-        ? "Application is running in demo mode with mock data due to API connectivity issues."
+        ? "Application is running in demo mode with mock data due to missing environment variables."
         : "Application is connected to the SMS-man API.",
       timestamp: new Date().toISOString(),
     })

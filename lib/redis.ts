@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis"
+import { getRedisUrl, getRedisToken, isRedisConfigured } from "./env"
 
 // Initialize Redis client using environment variables
 let redis: Redis | null = null
@@ -19,20 +20,17 @@ const createMockRedisClient = () => {
 }
 
 try {
-  // Check for REST API URL format (Upstash Redis REST client requires https:// URLs)
-  const restUrl = process.env.UPSTASH_REDIS_REST_URL || ""
-  const restToken = process.env.UPSTASH_REDIS_REST_TOKEN || ""
-
-  if (restUrl && restUrl.startsWith("https://") && restToken) {
+  // Check if Redis is properly configured
+  if (isRedisConfigured()) {
     // Use Upstash Redis REST client
     redis = new Redis({
-      url: restUrl,
-      token: restToken,
+      url: getRedisUrl(),
+      token: getRedisToken(),
     })
     console.log("Initialized Upstash Redis REST client")
   } else {
     // If we don't have valid REST API credentials, use mock client
-    console.warn("No valid Upstash Redis REST credentials found")
+    console.warn("No valid Upstash Redis REST credentials found, using mock client")
     redis = createMockRedisClient()
   }
 } catch (error) {

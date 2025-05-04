@@ -43,10 +43,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (supabaseUrl && supabaseAnonKey) {
           // If Supabase is configured, check for session
           try {
-            const {
-              data: { session },
-            } = await supabase.auth.getSession()
-            setUser(session?.user || null)
+            const sessionResponse = await supabase.auth.getSession()
+            // Safely access session data
+            if (
+              sessionResponse &&
+              sessionResponse.data &&
+              sessionResponse.data.session &&
+              sessionResponse.data.session.user
+            ) {
+              setUser(sessionResponse.data.session.user)
+            } else {
+              setUser(null)
+            }
           } catch (supabaseError) {
             console.error("Supabase session error:", supabaseError)
             // Continue with null user
@@ -80,9 +88,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       try {
         const authStateChange = supabase.auth.onAuthStateChange((_event, session) => {
-          setUser(session?.user || null)
+          // Safely set user
+          setUser(session && session.user ? session.user : null)
         })
-        subscription = authStateChange.data.subscription
+
+        // Safely access subscription
+        if (
+          authStateChange &&
+          authStateChange.data &&
+          authStateChange.data.subscription &&
+          typeof authStateChange.data.subscription.unsubscribe === "function"
+        ) {
+          subscription = authStateChange.data.subscription
+        }
       } catch (error) {
         console.error("Error setting up auth state change listener:", error)
       }
@@ -104,16 +122,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const response = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        throw error
+      // Safely check for errors
+      if (response && response.error) {
+        throw response.error
       }
 
-      setUser(data.user)
+      // Safely set user
+      if (response && response.data && response.data.user) {
+        setUser(response.data.user)
+      } else {
+        throw new Error("No user data returned")
+      }
     } catch (error) {
       console.error("Login error:", error)
       setError(error instanceof Error ? error.message : "Failed to log in")
@@ -128,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null)
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const response = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -138,24 +162,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       })
 
-      if (error) {
-        throw error
+      // Safely check for errors
+      if (response && response.error) {
+        throw response.error
       }
 
-      setUser(data.user)
+      // Safely set user
+      if (response && response.data && response.data.user) {
+        setUser(response.data.user)
 
-      // Create user profile in the database
-      if (data.user) {
-        const { error: profileError } = await supabase.from("users").insert({
-          auth_id: data.user.id,
-          name,
-          email,
-          balance: 10.0, // Starting balance
-        })
+        // Create user profile in the database
+        try {
+          const profileResponse = await supabase.from("users").insert({
+            auth_id: response.data.user.id,
+            name,
+            email,
+            balance: 10.0, // Starting balance
+          })
 
-        if (profileError) {
+          if (profileResponse && profileResponse.error) {
+            console.error("Error creating user profile:", profileResponse.error)
+          }
+        } catch (profileError) {
           console.error("Error creating user profile:", profileError)
         }
+      } else {
+        throw new Error("No user data returned")
       }
     } catch (error) {
       console.error("Signup error:", error)
